@@ -1,6 +1,6 @@
 {
   "name": "koolslicer",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "GRBL laser contour G-code generator from SVG",
   "main": "./out/main/index.js",
   "license": "MIT",
@@ -10,7 +10,8 @@
     "preview": "electron-vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist": "npm run build && electron-builder --win portable"
+    "dist": "npm run build && electron-builder --win portable",
+    "dist:portable": "npm run build && electron-builder --linux AppImage:x64 AppImage:arm64 --win portable:x64 portable:arm64"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.12",
@@ -43,6 +44,7 @@
       "output": "release"
     },
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "portable",
@@ -51,7 +53,10 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Portable-${version}.${ext}"
+      "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "files": [
       "out/**/*",
