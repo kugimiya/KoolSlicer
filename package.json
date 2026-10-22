@@ -1,0 +1,61 @@
+{
+  "name": "koolslicer",
+  "version": "0.1.0",
+  "description": "GRBL laser contour G-code generator from SVG",
+  "main": "./out/main/index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist": "npm run build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13.12",
+    "@xmldom/xmldom": "^0.9.12",
+    "js-angusj-clipper": "^1.3.1",
+    "paper": "^0.12.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-resizable-panels": "^2.1.7",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "canvas": "^3.2.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "happy-dom": "^21.0.3",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^3.0.5"
+  },
+  "build": {
+    "appId": "com.koolslicer.app",
+    "productName": "KoolSlicer",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ]
+  }
+}

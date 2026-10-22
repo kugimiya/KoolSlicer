@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="30mm" height="20mm" viewBox="0 0 30 20">
+  <rect id="track-0.2" x="1" y="1" width="20" height="0.2" fill="#000"/>
+  <rect id="track-0.6" x="1" y="3" width="20" height="0.6" fill="#000"/>
+  <rect id="track-2.0" x="1" y="5" width="20" height="2" fill="#000"/>
+  <circle id="circle-5" cx="26" cy="10" r="2.5" fill="#000"/>
+  <rect x="1" y="10" width="12" height="8" fill="#000"/>
+  <rect x="4" y="12" width="4" height="4" fill="#fff"/>
+  <text x="1" y="19" font-size="1.2" font-family="Arial" fill="#000">KS</text>
+</svg>
