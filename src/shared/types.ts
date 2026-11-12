@@ -1,3 +1,7 @@
+import type { GrblCommandResult, GrblEvent } from './grbl/grblSession'
+
+export type GrblPortInfo = { path: string; manufacturer?: string }
+
 export type Point = { x: number; y: number }
 
 
@@ -225,6 +229,26 @@ export type KoolSlicerApi = {
   openProjectFile: () => Promise<{ name: string; content: string } | null>
 
   saveProjectFile: (defaultName: string, content: string) => Promise<boolean>
+
+  listSerialPorts: () => Promise<GrblPortInfo[]>
+
+  grblConnect: (path: string, baud?: number) => Promise<GrblCommandResult>
+
+  grblDisconnect: () => Promise<void>
+
+  grblHome: () => Promise<GrblCommandResult>
+
+  grblStartJob: (lines: string[]) => Promise<GrblCommandResult>
+
+  grblPause: () => Promise<GrblCommandResult>
+
+  grblResume: () => Promise<GrblCommandResult>
+
+  grblAbort: () => Promise<GrblCommandResult>
+
+  grblSendLine: (line: string) => Promise<GrblCommandResult>
+
+  subscribeGrblEvents: (cb: (event: GrblEvent) => void) => () => void
 
 }
 

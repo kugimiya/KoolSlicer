@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import MainNav, { type MainPage } from './components/MainNav'
-import CncPlaceholder from './components/CncPlaceholder'
+import CncPage from './components/CncPage'
 import ToolbarDropdown from './components/ToolbarDropdown'
 import {
   IconDownload,
@@ -155,7 +155,7 @@ export default function App(): JSX.Element {
       <BusyIndicator />
       <MainNav page={mainPage} onChange={setMainPage} />
       {mainPage === 'cnc' ? (
-        <CncPlaceholder />
+        <CncPage />
       ) : (
         <>
       <div className="toolbar">

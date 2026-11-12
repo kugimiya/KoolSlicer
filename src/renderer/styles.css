@@ -985,6 +985,123 @@ button {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.cnc-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cnc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+
+.cnc-port-select {
+  min-width: 220px;
+  max-width: 360px;
+  background: #1e1e1e;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.cnc-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 320px;
+  min-height: 0;
+}
+
+.cnc-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+.cnc-pane:last-child {
+  border-right: none;
+}
+
+.cnc-state-list {
+  margin: 0;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 6px 8px;
+}
+
+.cnc-state-list dt {
+  color: var(--muted);
+}
+
+.cnc-state-list dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.cnc-notice {
+  margin: 0;
+  padding: 0 12px 10px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.cnc-gcode .gcode-viewer,
+.cnc-log {
+  flex: 1;
+  min-height: 0;
+}
+
+.cnc-log {
+  overflow: auto;
+  background: #1a1a1a;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.cnc-log-line {
+  padding: 0 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cnc-log-line--tx {
+  color: #9cdcfe;
+}
+
+.cnc-log-dir {
+  display: inline-block;
+  width: 1.2em;
+  color: var(--muted);
+}
+
+.cnc-send {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cnc-send-input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e1e;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+
 .preview-empty {
   padding: 24px;
   color: var(--muted);

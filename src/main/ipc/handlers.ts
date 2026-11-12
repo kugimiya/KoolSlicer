@@ -1,8 +1,10 @@
 import { ipcMain, dialog } from 'electron'
 import fs from 'fs/promises'
 import { IPC } from '../../shared/ipcChannels'
+import { registerGrblIpc } from '../grbl/grblIpc'
 
 export function registerIpcHandlers(): void {
+  registerGrblIpc()
   ipcMain.handle(IPC.PICK_SVG, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
