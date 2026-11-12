@@ -1,4 +1,15 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import MainNav, { type MainPage } from './components/MainNav'
+import CncPlaceholder from './components/CncPlaceholder'
+import ToolbarDropdown from './components/ToolbarDropdown'
+import {
+  IconDownload,
+  IconFolderOpen,
+  IconGcode,
+  IconSave,
+  IconUpload,
+  ToolbarButton
+} from './components/ToolbarIcons'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
 import SettingsPanel from './components/SettingsPanel'
 import SettingsAlerts from './components/SettingsAlerts'
@@ -9,120 +20,109 @@ import GcodeViewer from './components/GcodeViewer'
 import PolygonDebug from './components/PolygonDebug'
 import BusyIndicator from './components/BusyIndicator'
 import { useAppStore } from './store'
-import sampleSvg from './assets/sample.svg?raw'
 import {
   buildProjectFile,
   defaultGcodeFileName,
-  defaultOutlineGcodeFileName,
   defaultProjectFileName,
   serializeProjectFile
 } from '@shared/project'
-import { outlineDebugGcode } from './lib/outlineDebugGcode'
+import type { PcbLayerSide } from '@shared/layers'
 
 export default function App(): JSX.Element {
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [mainPage, setMainPage] = useState<MainPage>('design')
+  const topFileRef = useRef<HTMLInputElement>(null)
+  const bottomFileRef = useRef<HTMLInputElement>(null)
   const projectFileRef = useRef<HTMLInputElement>(null)
   const {
-    svgName,
-    svgText,
-    gcode,
-    moves,
+    topLayer,
+    bottomLayer,
     settings,
     bedLayout,
-    svgElementRules,
     viewTab,
     statusMessage,
     setViewTab,
-    loadSvg,
+    loadLayerSvg,
     loadProject,
     generate,
-    setStatus,
-    svgElementTree
+    setStatus
   } = useAppStore()
 
   const onPickFile = useCallback(
-    async (file: File) => {
+    async (file: File, side: PcbLayerSide) => {
       const text = await file.text()
-      await loadSvg(file.name, text)
+      await loadLayerSvg(side, file.name, text)
     },
-    [loadSvg]
+    [loadLayerSvg]
   )
 
-  const openSvg = useCallback(async () => {
-    if (window.koolSlicer?.pickSvgFile) {
-      const picked = await window.koolSlicer.pickSvgFile()
-      if (picked) await loadSvg(picked.name, picked.content)
-      return
-    }
-    fileRef.current?.click()
-  }, [loadSvg])
+  const openLayerSvg = useCallback(
+    async (side: PcbLayerSide) => {
+      if (window.koolSlicer?.pickSvgFile) {
+        const picked = await window.koolSlicer.pickSvgFile()
+        if (picked) await loadLayerSvg(side, picked.name, picked.content)
+        return
+      }
+      if (side === 'top') topFileRef.current?.click()
+      else bottomFileRef.current?.click()
+    },
+    [loadLayerSvg]
+  )
 
-  const loadSample = useCallback(async () => {
-    await loadSvg('sample.svg', sampleSvg)
-  }, [loadSvg])
-
-  const downloadGcode = useCallback(async () => {
-    if (!gcode) {
-      setStatus('Сначала сгенерируйте G-code')
-      return
-    }
-    const name = defaultGcodeFileName(svgName)
-    if (window.koolSlicer?.saveGcodeFile) {
-      const ok = await window.koolSlicer.saveGcodeFile(name, gcode)
-      setStatus(ok ? `Сохранено ${name}` : 'Сохранение отменено')
-      return
-    }
-    const blob = new Blob([gcode], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(url)
-    setStatus(`Скачан ${name}`)
-  }, [gcode, svgName, setStatus])
-
-  const downloadOutlineGcode = useCallback(async () => {
-    if (moves.length === 0) {
-      setStatus('Сначала сгенерируйте G-code')
-      return
-    }
-    const text = outlineDebugGcode(moves, settings)
-    if (!text) {
-      setStatus('Нет cut-перемещений для контура отладки')
-      return
-    }
-    const name = defaultOutlineGcodeFileName(svgName)
-    if (window.koolSlicer?.saveGcodeFile) {
-      const ok = await window.koolSlicer.saveGcodeFile(name, text)
-      setStatus(ok ? `Сохранён контур отладки (${name})` : 'Сохранение отменено')
-      return
-    }
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(url)
-    setStatus(`Скачан ${name}`)
-  }, [moves, settings, svgName, setStatus])
+  const downloadGcodeForSide = useCallback(
+    async (side: PcbLayerSide) => {
+      const layer = side === 'top' ? topLayer : bottomLayer
+      const gcode = layer.gcode
+      if (!gcode) {
+        setStatus(`Сначала сгенерируйте G-code (${side === 'top' ? 'верх' : 'низ'})`)
+        return
+      }
+      const name = defaultGcodeFileName(layer.svgName, side)
+      if (window.koolSlicer?.saveGcodeFile) {
+        const ok = await window.koolSlicer.saveGcodeFile(name, gcode)
+        setStatus(ok ? `Сохранено ${name}` : 'Сохранение отменено')
+        return
+      }
+      const blob = new Blob([gcode], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      URL.revokeObjectURL(url)
+      setStatus(`Скачан ${name}`)
+    },
+    [topLayer, bottomLayer, setStatus]
+  )
 
   const saveProject = useCallback(async () => {
-    if (!svgText) {
+    const topBundle =
+      topLayer.svgText && topLayer.svgName
+        ? {
+            svgName: topLayer.svgName,
+            svgText: topLayer.svgText,
+            svgElementRules: topLayer.svgElementRules
+          }
+        : null
+    const bottomBundle =
+      bottomLayer.svgText && bottomLayer.svgName
+        ? {
+            svgName: bottomLayer.svgName,
+            svgText: bottomLayer.svgText,
+            svgElementRules: bottomLayer.svgElementRules
+          }
+        : null
+    if (!topBundle && !bottomBundle) {
       setStatus('Нет SVG — нечего сохранять в проект')
       return
     }
     const json = serializeProjectFile(
       buildProjectFile({
-        svgName: svgName ?? 'project.svg',
-        svgText,
         settings,
         bedLayout,
-        svgElementRules
+        layers: { top: topBundle, bottom: bottomBundle }
       })
     )
-    const name = defaultProjectFileName(svgName)
+    const name = defaultProjectFileName(topLayer.svgName ?? bottomLayer.svgName)
     if (window.koolSlicer?.saveProjectFile) {
       const ok = await window.koolSlicer.saveProjectFile(name, json)
       setStatus(ok ? `Проект сохранён (${name})` : 'Сохранение отменено')
@@ -136,7 +136,7 @@ export default function App(): JSX.Element {
     a.click()
     URL.revokeObjectURL(url)
     setStatus(`Скачан проект ${name}`)
-  }, [svgText, svgName, settings, bedLayout, svgElementRules, setStatus])
+  }, [topLayer, bottomLayer, settings, bedLayout, setStatus])
 
   const openProject = useCallback(async () => {
     if (window.koolSlicer?.openProjectFile) {
@@ -147,37 +147,65 @@ export default function App(): JSX.Element {
     projectFileRef.current?.click()
   }, [loadProject])
 
+  const hasAnySvg = Boolean(topLayer.svgText || bottomLayer.svgText)
+  const pathHint = [topLayer.svgName, bottomLayer.svgName].filter(Boolean).join(' · ')
+
   return (
     <div className="app-shell">
       <BusyIndicator />
+      <MainNav page={mainPage} onChange={setMainPage} />
+      {mainPage === 'cnc' ? (
+        <CncPlaceholder />
+      ) : (
+        <>
       <div className="toolbar">
-        <button type="button" onClick={() => void openSvg()}>
-          Загрузить SVG…
-        </button>
-        <button type="button" className="secondary" onClick={() => void loadSample()}>
-          sample.svg
-        </button>
-        <button type="button" onClick={() => void generate({ skipConfirm: false })}>
-          Сгенерировать
-        </button>
-        <button type="button" className="secondary" onClick={() => void saveProject()} disabled={!svgText}>
-          Сохранить проект…
-        </button>
-        <button type="button" className="secondary" onClick={() => void openProject()}>
-          Открыть проект…
-        </button>
-        <button type="button" className="secondary" onClick={() => void downloadGcode()} disabled={!gcode}>
-          Скачать .gcode
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => void downloadOutlineGcode()}
-          disabled={moves.length === 0}
-          title="5% мощности, F rapid — прямоугольник по границе всех cut-линий"
-        >
-          Контур отладки…
-        </button>
+        <ToolbarButton variant="secondary" icon={<IconFolderOpen />} onClick={() => void openProject()} />
+
+        <ToolbarButton
+          variant="secondary"
+          icon={<IconSave />}
+          onClick={() => void saveProject()}
+          disabled={!hasAnySvg}
+        />
+        
+
+        <ToolbarDropdown
+          label="Добавить"
+          items={[
+            {
+              id: 'svg-top',
+              label: 'SVG верхний',
+              icon: <IconDownload />,
+              onSelect: () => void openLayerSvg('top')
+            },
+            {
+              id: 'svg-bottom',
+              label: 'SVG нижний',
+              icon: <IconDownload />,
+              onSelect: () => void openLayerSvg('bottom')
+            }
+          ]}
+        />
+        <ToolbarDropdown
+          label="Выгрузить"
+          variant="secondary"
+          items={[
+            {
+              id: 'gcode-top',
+              label: 'GCode верхний',
+              icon: <IconUpload />,
+              disabled: !topLayer.gcode,
+              onSelect: () => void downloadGcodeForSide('top')
+            },
+            {
+              id: 'gcode-bottom',
+              label: 'GCode нижний',
+              icon: <IconUpload />,
+              disabled: !bottomLayer.gcode,
+              onSelect: () => void downloadGcodeForSide('bottom')
+            }
+          ]}
+        />
         <div className="view-tabs">
           <button
             type="button"
@@ -194,19 +222,34 @@ export default function App(): JSX.Element {
             Полигоны
           </button>
         </div>
-        {svgName && (
-          <span className="toolbar-path" title={svgName}>
-            {svgName}
+        <div className="toolbar-spacer" />
+        {pathHint && (
+          <span className="toolbar-path" title={pathHint}>
+            {pathHint}
           </span>
         )}
+        <ToolbarButton icon={<IconGcode />} onClick={() => void generate({ skipConfirm: false })}>
+          Реген
+        </ToolbarButton>
         <input
-          ref={fileRef}
+          ref={topFileRef}
           type="file"
           accept=".svg,image/svg+xml"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) void onPickFile(f)
+            if (f) void onPickFile(f, 'top')
+            e.target.value = ''
+          }}
+        />
+        <input
+          ref={bottomFileRef}
+          type="file"
+          accept=".svg,image/svg+xml"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) void onPickFile(f, 'bottom')
             e.target.value = ''
           }}
         />
@@ -238,16 +281,13 @@ export default function App(): JSX.Element {
             <PanelResizeHandle className="resize-handle" />
             <Panel defaultSize={42} minSize={18}>
               <div className="panel svg-tree-panel" style={{ height: '100%' }}>
-                <div className="panel-header">Элементы SVG</div>
-                <div className="panel-body panel-body--flush svg-tree-panel-body">
-                  <SvgElementPanel tree={svgElementTree} embedded />
-                </div>
+                <SvgElementPanel embedded />
               </div>
             </Panel>
           </PanelGroup>
         </Panel>
         <PanelResizeHandle className="resize-handle" />
-        <Panel defaultSize={46} minSize={30}>
+        <Panel defaultSize={61} minSize={30}>
           <PanelGroup direction="vertical">
             <Panel defaultSize={78} minSize={40}>
               <div className="panel" style={{ height: '100%' }}>
@@ -264,7 +304,7 @@ export default function App(): JSX.Element {
           </PanelGroup>
         </Panel>
         <PanelResizeHandle className="resize-handle" />
-        <Panel defaultSize={30} minSize={20}>
+        <Panel defaultSize={15} minSize={10}>
           <div className="panel" style={{ height: '100%' }}>
             <div className="panel-header">G-code</div>
             <div className="panel-body" style={{ padding: 0 }}>
@@ -275,6 +315,8 @@ export default function App(): JSX.Element {
       </PanelGroup>
 
       <div className="status-bar">{statusMessage}</div>
+        </>
+      )}
     </div>
   )
 }

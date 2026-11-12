@@ -2,8 +2,9 @@ import type { BedLayout, LaserSettings, Move, ParseResult } from '@shared/types'
 import type { BoardRef } from './geo/types'
 import { generateRingsFromRegions } from './geo/toolpathRegions'
 import { buildToolpathFromRings } from './toolpath'
-import { boardAnchorOffset, expandPanel, getBoardSize, toMachineCoords, validateLayout } from './layout'
-import { cloneMove } from './toolpath'
+import { anchorMovesForPcbSide } from './boardHorizontalAnchor'
+import { expandPanel, getBoardSize, toMachineCoords, validateLayout } from './layout'
+import type { PcbLayerSide } from '@shared/layers'
 import { movesToGcode } from './gcode'
 import { buildTimeline, type SimulationTimeline } from './simulate'
 
@@ -22,9 +23,10 @@ export async function generateFromParse(
   parse: ParseResult,
   settings: LaserSettings,
   layout: BedLayout,
-  boardRef?: BoardRef | null
+  boardRef?: BoardRef | null,
+  pcbSide: PcbLayerSide = 'top'
 ): Promise<GenerateResult> {
-  const validation = validateLayout(parse, layout)
+  const validation = validateLayout(parse, layout, undefined, pcbSide)
   if (!validation.ok) {
     return {
       ok: false,
@@ -56,8 +58,7 @@ export async function generateFromParse(
   const rings = await generateRingsFromRegions(regions, settings, ref)
   let localMoves = buildToolpathFromRings(rings, settings)
 
-  const anchor = boardAnchorOffset(parse, layout)
-  localMoves = localMoves.map((m) => cloneMove(m, anchor.x, anchor.y))
+  localMoves = anchorMovesForPcbSide(localMoves, parse, layout, pcbSide)
 
   const board = getBoardSize(parse, layout)
   let moves = expandPanel(
@@ -66,11 +67,12 @@ export async function generateFromParse(
     board.widthMm,
     board.heightMm,
     settings.travelOptimize,
-    settings.rapidFeed
+    settings.rapidFeed,
+    pcbSide
   )
   moves = toMachineCoords(moves, { x: layout.blank.offsetX, y: layout.blank.offsetY })
 
-  const postValidation = validateLayout(parse, layout, moves)
+  const postValidation = validateLayout(parse, layout, moves, pcbSide)
   const { text, lines } = movesToGcode(moves, settings)
 
   return {

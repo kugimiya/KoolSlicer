@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ParseResult } from '@shared/types'
+import type { Move, ParseResult } from '@shared/types'
+import type { PcbLayerSide } from '@shared/layers'
 import { useAppStore } from '../store'
 import type { BoardRef } from '../lib/geo/types'
+import type { PcbLayerJob } from '../store/layerTypes'
 import { boardToMachinePoint, layoutCopyRects } from '../lib/layout'
 import { positionAtTime, segmentIndexAtTime, segmentProgressAtTime } from '../lib/simulate'
 import { createMachineToScreen, fillWorldRect, strokeWorldRect } from '../lib/previewDraw'
@@ -11,6 +13,11 @@ type ViewTransform = {
   offsetX: number
   offsetY: number
 }
+
+const TOP_CUT = '#6eb5e0'
+const TOP_RAPID = '#e8c060'
+const BOTTOM_CUT = '#915f1f'
+const BOTTOM_RAPID = '#174d70'
 
 export default function Preview(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -23,14 +30,14 @@ export default function Preview(): JSX.Element {
   const lastPos = useRef({ x: 0, y: 0 })
 
   const {
-    parseResult,
-    geometryImportCache,
-    svgElementRules,
-    boardRef,
-    moves,
+    topLayer,
+    bottomLayer,
+    previewShowTop,
+    previewShowBottom,
+    setPreviewShowTop,
+    setPreviewShowBottom,
     settings,
     bedLayout,
-    timeline,
     playerTime,
     viewTab
   } = useAppStore()
@@ -111,110 +118,43 @@ export default function Preview(): JSX.Element {
       scale
     )
 
-    const layoutParse = previewLayoutParse(parseResult, boardRef ?? geometryImportCache?.boardRef ?? null)
-
-    if (layoutParse && viewTab === 'preview') {
-      const rects = layoutCopyRects(layoutParse, bedLayout)
-      for (const r of rects) {
-        ctx.strokeStyle = r.fits ? '#4a4' : '#f44'
-        strokeWorldRect(ctx, toScreen, { x: r.x, y: r.y, widthMm: r.w, heightMm: r.h }, scale)
+    if (viewTab === 'preview') {
+      const layers: { side: PcbLayerSide; job: PcbLayerJob; visible: boolean }[] = [
+        { side: 'top', job: topLayer, visible: previewShowTop },
+        { side: 'bottom', job: bottomLayer, visible: previewShowBottom }
+      ]
+      for (const { side, job, visible } of layers) {
+        if (!visible) continue
+        drawLayerGeometry(ctx, job, side, bedLayout, toScreen, scale, viewTab)
       }
 
-      const toMachine = (x: number, y: number) => {
-        const m = boardToMachinePoint({ x, y }, layoutParse, bedLayout)
-        return toScreen(m.x, m.y)
-      }
-
-      ctx.lineWidth = 1
-
-      if (geometryImportCache) {
-        const br = geometryImportCache.boardRef
-        ctx.strokeStyle = 'rgba(110, 120, 140, 0.55)'
-        ctx.setLineDash([6, 4])
-        drawPath(ctx, boardRefRect(br), toMachine)
-        ctx.setLineDash([])
-
-        for (const el of geometryImportCache.elements) {
-          const rule = svgElementRules[el.key]
-          ctx.strokeStyle = rule
-            ? rule.mode === 'fill'
-              ? 'rgba(100, 190, 130, 0.55)'
-              : rule.mode === 'subtract'
-                ? 'rgba(210, 120, 120, 0.55)'
-                : 'rgba(150, 195, 235, 0.6)'
-            : 'rgba(180, 180, 180, 0.38)'
-          for (const contour of el.contours) {
-            drawPath(ctx, contour, toMachine)
-          }
-          for (const cmp of el.compounds) {
-            drawPath(ctx, cmp.outer, toMachine)
-            for (const hole of cmp.holes) drawPath(ctx, hole, toMachine)
-          }
+      for (const { side, job, visible } of layers) {
+        if (!visible || job.moves.length === 0) continue
+        const cutColor = side === 'top' ? TOP_CUT : BOTTOM_CUT
+        const rapidColor = side === 'top' ? TOP_RAPID : BOTTOM_RAPID
+        const timeline = job.timeline
+        const moves = job.moves
+        const endIdx =
+          timeline && timeline.moves.length > 0 ? segmentIndexAtTime(timeline, playerTime) : moves.length - 1
+        const partialU =
+          timeline && timeline.moves.length > 0 ? segmentProgressAtTime(timeline, playerTime) : 1
+        const onlyLayerPlaying =
+          (previewShowTop && !previewShowBottom) || (previewShowBottom && !previewShowTop)
+        const drawPlayhead = onlyLayerPlaying
+        drawMoves(ctx, moves, toScreen, showCuts, showRapids, cutColor, rapidColor, {
+          endIdx: drawPlayhead ? endIdx : moves.length - 1,
+          partialU: drawPlayhead ? partialU : 1,
+          useTimeline: Boolean(drawPlayhead && timeline)
+        })
+        if (drawPlayhead && timeline) {
+          const pos = positionAtTime(timeline, playerTime)
+          const p = toScreen(pos.x, pos.y)
+          ctx.fillStyle = side === 'top' ? '#fff' : '#f0c878'
+          ctx.beginPath()
+          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
+          ctx.fill()
         }
       }
-
-      if (parseResult && parseResult.polygons.length > 0) {
-        ctx.strokeStyle = 'rgba(100, 170, 230, 0.85)'
-        ctx.lineWidth = 1.25
-        for (const poly of parseResult.polygons) {
-          drawPath(ctx, poly.outer, toMachine)
-          for (const hole of poly.holes) drawPath(ctx, hole, toMachine)
-        }
-        ctx.lineWidth = 1
-      }
-    }
-
-    const CUT_COLOR = '#6eb5e0'
-    const RAPID_COLOR = '#e8c060'
-    const endIdx =
-      timeline && timeline.moves.length > 0
-        ? segmentIndexAtTime(timeline, playerTime)
-        : moves.length - 1
-    const partialU =
-      timeline && timeline.moves.length > 0 ? segmentProgressAtTime(timeline, playerTime) : 1
-
-    let pointCount = 0
-    const stride = moves.length > 100_000 ? 4 : 1
-    const drawLimit = timeline ? endIdx : moves.length - 1
-
-    for (let i = 0; i <= drawLimit && i < moves.length; i++) {
-      const m = moves[i]
-      if (m.type === 'rapid') {
-        if (!showRapids) continue
-      } else if (!showCuts) {
-        continue
-      } else {
-        pointCount++
-        if (pointCount % stride !== 0) continue
-      }
-
-      let tx = m.to.x
-      let ty = m.to.y
-      if (i === drawLimit && timeline && m.type === 'cut') {
-        tx = m.from.x + (m.to.x - m.from.x) * partialU
-        ty = m.from.y + (m.to.y - m.from.y) * partialU
-      }
-
-      const a = toScreen(m.from.x, m.from.y)
-      const b = toScreen(tx, ty)
-      ctx.strokeStyle = m.type === 'rapid' ? RAPID_COLOR : CUT_COLOR
-      ctx.globalAlpha = m.type === 'rapid' ? 0.85 : 0.9
-      ctx.setLineDash(m.type === 'rapid' ? [4, 3] : [])
-      ctx.beginPath()
-      ctx.moveTo(a.x, a.y)
-      ctx.lineTo(b.x, b.y)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.globalAlpha = 1
-    }
-
-    if (timeline) {
-      const pos = positionAtTime(timeline, playerTime)
-      const p = toScreen(pos.x, pos.y)
-      ctx.fillStyle = '#fff'
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
-      ctx.fill()
     }
 
     ctx.font = '11px Segoe UI, sans-serif'
@@ -231,15 +171,13 @@ export default function Preview(): JSX.Element {
     ctx.fillText('+Y', home.x - 2, home.y - 14)
     ctx.fillText('+X', home.x + 14, home.y + 4)
   }, [
-    parseResult,
-    geometryImportCache,
-    svgElementRules,
-    boardRef,
-    moves,
+    topLayer,
+    bottomLayer,
+    previewShowTop,
+    previewShowBottom,
     settings,
     bedLayout,
     transform,
-    timeline,
     playerTime,
     viewTab,
     canvasSize,
@@ -273,6 +211,22 @@ export default function Preview(): JSX.Element {
         <button type="button" className="secondary" onClick={fitToView}>
           Вписать
         </button>
+        <label className="preview-layer-toggle">
+          <input
+            type="checkbox"
+            checked={previewShowTop}
+            onChange={(e) => setPreviewShowTop(e.target.checked)}
+          />
+          Верхний слой
+        </label>
+        <label className="preview-layer-toggle">
+          <input
+            type="checkbox"
+            checked={previewShowBottom}
+            onChange={(e) => setPreviewShowBottom(e.target.checked)}
+          />
+          Нижний слой
+        </label>
         <label className="preview-layer-toggle">
           <input type="checkbox" checked={showCuts} onChange={(e) => setShowCuts(e.target.checked)} />
           Резка
@@ -310,6 +264,116 @@ export default function Preview(): JSX.Element {
       />
     </div>
   )
+}
+
+function drawLayerGeometry(
+  ctx: CanvasRenderingContext2D,
+  job: PcbLayerJob,
+  side: PcbLayerSide,
+  bedLayout: import('@shared/types').BedLayout,
+  toScreen: (x: number, y: number) => { x: number; y: number },
+  scale: number,
+  viewTab: string
+): void {
+  const parseResult = job.parseResult
+  const boardRef = job.boardRef ?? job.geometryImportCache?.boardRef ?? null
+  const layoutParse = previewLayoutParse(parseResult, boardRef)
+  if (!layoutParse) return
+
+  const rects = layoutCopyRects(layoutParse, bedLayout, side)
+  for (const r of rects) {
+    ctx.strokeStyle = r.fits ? '#4a4' : '#f44'
+    strokeWorldRect(ctx, toScreen, { x: r.x, y: r.y, widthMm: r.w, heightMm: r.h }, scale)
+  }
+
+  const toMachine = (x: number, y: number) => {
+    const m = boardToMachinePoint({ x, y }, layoutParse, bedLayout, 0, 0, side)
+    return toScreen(m.x, m.y)
+  }
+
+  ctx.lineWidth = 1
+
+  if (job.geometryImportCache) {
+    const br = job.geometryImportCache.boardRef
+    ctx.strokeStyle = 'rgba(110, 120, 140, 0.55)'
+    ctx.setLineDash([6, 4])
+    drawPath(ctx, boardRefRect(br), toMachine)
+    ctx.setLineDash([])
+
+    for (const el of job.geometryImportCache.elements) {
+      const rule = job.svgElementRules[el.key]
+      ctx.strokeStyle = rule
+        ? rule.mode === 'fill'
+          ? 'rgba(100, 190, 130, 0.55)'
+          : rule.mode === 'subtract'
+            ? 'rgba(210, 120, 120, 0.55)'
+            : 'rgba(150, 195, 235, 0.6)'
+        : 'rgba(180, 180, 180, 0.38)'
+      for (const contour of el.contours) {
+        drawPath(ctx, contour, toMachine)
+      }
+      for (const cmp of el.compounds) {
+        drawPath(ctx, cmp.outer, toMachine)
+        for (const hole of cmp.holes) drawPath(ctx, hole, toMachine)
+      }
+    }
+  }
+
+  if (parseResult && parseResult.polygons.length > 0 && viewTab === 'preview') {
+    ctx.strokeStyle = side === 'bottom' ? 'rgba(190, 130, 90, 0.85)' : 'rgba(100, 170, 230, 0.85)'
+    ctx.lineWidth = 1.25
+    for (const poly of parseResult.polygons) {
+      drawPath(ctx, poly.outer, toMachine)
+      for (const hole of poly.holes) drawPath(ctx, hole, toMachine)
+    }
+    ctx.lineWidth = 1
+  }
+}
+
+function drawMoves(
+  ctx: CanvasRenderingContext2D,
+  moves: Move[],
+  toScreen: (x: number, y: number) => { x: number; y: number },
+  showCuts: boolean,
+  showRapids: boolean,
+  cutColor: string,
+  rapidColor: string,
+  opts: { endIdx: number; partialU: number; useTimeline: boolean }
+): void {
+  let pointCount = 0
+  const stride = moves.length > 100_000 ? 4 : 1
+  const drawLimit = opts.useTimeline ? opts.endIdx : moves.length - 1
+
+  for (let i = 0; i <= drawLimit && i < moves.length; i++) {
+    const m = moves[i]
+    if (m.type === 'rapid') {
+      if (!showRapids) continue
+    } else if (!showCuts) {
+      continue
+    } else {
+      pointCount++
+      if (pointCount % stride !== 0) continue
+    }
+
+    let tx = m.to.x
+    let ty = m.to.y
+    if (i === drawLimit && opts.useTimeline && m.type === 'cut') {
+      tx = m.from.x + (m.to.x - m.from.x) * opts.partialU
+      ty = m.from.y + (m.to.y - m.from.y) * opts.partialU
+    }
+
+    const a = toScreen(m.from.x, m.from.y)
+    const b = toScreen(tx, ty)
+    ctx.strokeStyle = m.type === 'rapid' ? rapidColor : cutColor
+    ctx.globalAlpha = m.type === 'rapid' ? 0.85 : 0.9
+    ctx.setLineDash(m.type === 'rapid' ? [4, 3] : [])
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+  }
 }
 
 function previewLayoutParse(

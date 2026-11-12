@@ -41,7 +41,8 @@ describe('pipeline integration', () => {
     expect(rapids.length).toBeGreaterThan(0)
     for (let i = 0; i < result.gcodeLines.length - 1; i++) {
       if (result.gcodeLines[i].startsWith('G0 ')) {
-        expect(result.gcodeLines[i - 1]).toBe('M5')
+        const prev = result.gcodeLines[i - 1]
+        expect(prev === 'M5' || prev === 'G28 X0 Y0' || prev === 'G94').toBe(true)
       }
     }
     for (const m of result.moves) {

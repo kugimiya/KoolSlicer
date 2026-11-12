@@ -5,6 +5,8 @@ import type {
   ParseResult,
   Point
 } from '@shared/types'
+import type { PcbLayerSide } from '@shared/layers'
+import { boardPointToCopyLocal } from './boardHorizontalAnchor'
 import { bboxOfPolygons, translatePoint } from './geometry'
 import { appendRapid, cloneMove, totalRapidLength } from './toolpath'
 import { nearestNeighborOrder } from './geometry'
@@ -31,14 +33,15 @@ export function boardToMachinePoint(
   parse: ParseResult,
   layout: BedLayout,
   copyCol = 0,
-  copyRow = 0
+  copyRow = 0,
+  pcbSide: PcbLayerSide = 'top'
 ): Point {
   const board = getBoardSize(parse, layout)
-  const anchor = boardAnchorOffset(parse, layout)
-  const off = panelCopyOffset(layout, board.widthMm, board.heightMm, copyCol, copyRow)
+  const local = boardPointToCopyLocal(p, parse, layout, pcbSide)
+  const off = panelCopyOffset(layout, board.widthMm, board.heightMm, copyCol, copyRow, pcbSide)
   return {
-    x: layout.blank.offsetX + anchor.x + off.x + p.x,
-    y: layout.blank.offsetY + anchor.y + off.y + p.y
+    x: layout.blank.offsetX + off.x + local.x,
+    y: layout.blank.offsetY + off.y + local.y
   }
 }
 
@@ -47,19 +50,23 @@ export function panelCopyOffset(
   boardW: number,
   boardH: number,
   col: number,
-  row: number
+  row: number,
+  side: PcbLayerSide = 'top'
 ): Point {
   const { marginX, marginY, gapX, gapY } = layout.panel
-  return {
-    x: marginX + col * (boardW + gapX),
-    y: marginY + row * (boardH + gapY)
+  const y = marginY + row * (boardH + gapY)
+  if (side === 'top') {
+    return { x: marginX + col * (boardW + gapX), y }
   }
+  const x = layout.blank.widthMm - marginX - boardW - col * (boardW + gapX)
+  return { x, y }
 }
 
 export function validateLayout(
   parse: ParseResult,
   layout: BedLayout,
-  moves?: Move[]
+  moves?: Move[],
+  pcbSide: PcbLayerSide = 'top'
 ): LayoutValidation {
   const errors: string[] = []
   const warnings: string[] = []
@@ -80,7 +87,7 @@ export function validateLayout(
   for (let r = 0; r < panel.rows; r++) {
     copyFits[r] = []
     for (let c = 0; c < panel.columns; c++) {
-      const off = panelCopyOffset(layout, board.widthMm, board.heightMm, c, r)
+      const off = panelCopyOffset(layout, board.widthMm, board.heightMm, c, r, pcbSide)
       const fits =
         off.x >= 0 &&
         off.y >= 0 &&
@@ -135,14 +142,15 @@ export function expandPanel(
   boardW: number,
   boardH: number,
   travelOptimize: boolean,
-  rapidFeed: number
+  rapidFeed: number,
+  pcbSide: PcbLayerSide = 'top'
 ): Move[] {
   const { columns, rows } = layout.panel
   const copies: Move[][] = []
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < columns; c++) {
-      const off = panelCopyOffset(layout, boardW, boardH, c, r)
+      const off = panelCopyOffset(layout, boardW, boardH, c, r, pcbSide)
       copies.push(
         localMoves.map((m) => ({
           ...cloneMove(m, off.x, off.y),
@@ -174,23 +182,23 @@ export function toMachineCoords(moves: Move[], blankOffset: Point): Move[] {
 
 export function layoutCopyRects(
   parse: ParseResult,
-  layout: BedLayout
+  layout: BedLayout,
+  pcbSide: PcbLayerSide = 'top'
 ): { col: number; row: number; x: number; y: number; w: number; h: number; fits: boolean }[] {
   const board = getBoardSize(parse, layout)
-  const anchor = boardAnchorOffset(parse, layout)
-  const validation = validateLayout(parse, layout)
+  const validation = validateLayout(parse, layout, undefined, pcbSide)
   const rects: { col: number; row: number; x: number; y: number; w: number; h: number; fits: boolean }[] =
     []
 
   for (let r = 0; r < layout.panel.rows; r++) {
     for (let c = 0; c < layout.panel.columns; c++) {
-      const off = panelCopyOffset(layout, board.widthMm, board.heightMm, c, r)
+      const off = panelCopyOffset(layout, board.widthMm, board.heightMm, c, r, pcbSide)
       rects.push({
         col: c,
         row: r,
         // x,y — нижний левый угол копии в machine mm
-        x: layout.blank.offsetX + anchor.x + off.x,
-        y: layout.blank.offsetY + anchor.y + off.y,
+        x: layout.blank.offsetX + off.x,
+        y: layout.blank.offsetY + off.y,
         w: board.widthMm,
         h: board.heightMm,
         fits: validation.copyFits[r]?.[c] ?? false

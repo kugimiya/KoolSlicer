@@ -5,31 +5,26 @@ import {
   type LaserSettings,
   type SvgElementRules
 } from './types'
+import type { LayerSvgBundle, PcbLayerSide } from './layers'
 
-export const PROJECT_FORMAT_VERSION = 1
+export const PROJECT_FORMAT_VERSION = 2
 
 export type KoolSlicerProjectFile = {
   formatVersion: typeof PROJECT_FORMAT_VERSION
   app: 'koolslicer'
-  svgName: string
-  svgText: string
   settings: LaserSettings
   bedLayout: BedLayout
-  svgElementRules: SvgElementRules
+  layers: Record<PcbLayerSide, LayerSvgBundle | null>
 }
 
 export function buildProjectFile(input: {
-  svgName: string
-  svgText: string
   settings: LaserSettings
   bedLayout: BedLayout
-  svgElementRules: SvgElementRules
+  layers: Record<PcbLayerSide, LayerSvgBundle | null>
 }): KoolSlicerProjectFile {
   return {
     formatVersion: PROJECT_FORMAT_VERSION,
     app: 'koolslicer',
-    svgName: input.svgName,
-    svgText: input.svgText,
     settings: { ...input.settings },
     bedLayout: {
       workArea: { ...input.bedLayout.workArea },
@@ -40,7 +35,12 @@ export function buildProjectFile(input: {
         ? { ...input.bedLayout.boardSizeOverride }
         : null
     },
-    svgElementRules: { ...input.svgElementRules }
+    layers: {
+      top: input.layers.top ? { ...input.layers.top, svgElementRules: { ...input.layers.top.svgElementRules } } : null,
+      bottom: input.layers.bottom
+        ? { ...input.layers.bottom, svgElementRules: { ...input.layers.bottom.svgElementRules } }
+        : null
+    }
   }
 }
 
@@ -85,6 +85,32 @@ function mergeBedLayout(raw: unknown): BedLayout {
   return base
 }
 
+function parseLayerBundle(raw: unknown): LayerSvgBundle | null {
+  if (!isRecord(raw)) return null
+  const svgName = typeof raw.svgName === 'string' ? raw.svgName : 'layer.svg'
+  const svgText = typeof raw.svgText === 'string' ? raw.svgText : ''
+  if (!svgText.trim()) return null
+  const svgElementRules: SvgElementRules = isRecord(raw.svgElementRules)
+    ? (raw.svgElementRules as SvgElementRules)
+    : {}
+  return { svgName, svgText, svgElementRules }
+}
+
+function parseV1Layer(raw: Record<string, unknown>): Record<PcbLayerSide, LayerSvgBundle | null> {
+  const svgName = typeof raw.svgName === 'string' ? raw.svgName : 'project.svg'
+  const svgText = typeof raw.svgText === 'string' ? raw.svgText : ''
+  const svgElementRules: SvgElementRules = isRecord(raw.svgElementRules)
+    ? (raw.svgElementRules as SvgElementRules)
+    : {}
+  if (!svgText.trim()) {
+    return { top: null, bottom: null }
+  }
+  return {
+    top: { svgName, svgText, svgElementRules },
+    bottom: null
+  }
+}
+
 export function parseProjectFile(json: string): KoolSlicerProjectFile {
   let raw: unknown
   try {
@@ -93,15 +119,14 @@ export function parseProjectFile(json: string): KoolSlicerProjectFile {
     throw new Error('Файл проекта: неверный JSON')
   }
   if (!isRecord(raw)) throw new Error('Файл проекта: ожидается объект')
-  if (raw.formatVersion !== PROJECT_FORMAT_VERSION) {
-    throw new Error(`Файл проекта: неподдерживаемая версия (${String(raw.formatVersion)})`)
-  }
   if (raw.app !== 'koolslicer') {
     throw new Error('Файл проекта: это не проект KoolSlicer')
   }
-  const svgName = typeof raw.svgName === 'string' ? raw.svgName : 'project.svg'
-  const svgText = typeof raw.svgText === 'string' ? raw.svgText : ''
-  if (!svgText.trim()) throw new Error('Файл проекта: пустой SVG')
+
+  const version = raw.formatVersion
+  if (version !== 1 && version !== PROJECT_FORMAT_VERSION) {
+    throw new Error(`Файл проекта: неподдерживаемая версия (${String(version)})`)
+  }
 
   const settings = {
     ...DEFAULT_LASER_SETTINGS,
@@ -110,32 +135,38 @@ export function parseProjectFile(json: string): KoolSlicerProjectFile {
 
   const bedLayout = mergeBedLayout(raw.bedLayout)
 
-  const svgElementRules: SvgElementRules = isRecord(raw.svgElementRules)
-    ? (raw.svgElementRules as SvgElementRules)
-    : {}
+  let layers: Record<PcbLayerSide, LayerSvgBundle | null>
+  if (version === 1) {
+    layers = parseV1Layer(raw)
+  } else if (isRecord(raw.layers)) {
+    layers = {
+      top: parseLayerBundle(raw.layers.top),
+      bottom: parseLayerBundle(raw.layers.bottom)
+    }
+  } else {
+    layers = { top: null, bottom: null }
+  }
+
+  if (!layers.top && !layers.bottom) {
+    throw new Error('Файл проекта: нет SVG ни для одного слоя')
+  }
 
   return {
     formatVersion: PROJECT_FORMAT_VERSION,
     app: 'koolslicer',
-    svgName,
-    svgText,
     settings,
     bedLayout,
-    svgElementRules
+    layers
   }
 }
 
-export function defaultProjectFileName(svgName: string | null): string {
-  const base = (svgName ?? 'project').replace(/\.svg$/i, '')
+export function defaultProjectFileName(primarySvgName: string | null): string {
+  const base = (primarySvgName ?? 'project').replace(/\.svg$/i, '')
   return `${base}.koolslicer`
 }
 
-export function defaultGcodeFileName(svgName: string | null): string {
+export function defaultGcodeFileName(svgName: string | null, side: PcbLayerSide): string {
   const base = (svgName ?? 'job').replace(/\.svg$/i, '')
-  return `${base}.gcode`
-}
-
-export function defaultOutlineGcodeFileName(svgName: string | null): string {
-  const base = (svgName ?? 'job').replace(/\.svg$/i, '')
-  return `${base}-outline.gcode`
+  const suffix = side === 'top' ? 'top' : 'bottom'
+  return `${base}-${suffix}.gcode`
 }

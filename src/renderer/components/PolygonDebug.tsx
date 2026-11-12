@@ -2,9 +2,14 @@ import { useAppStore } from '../store'
 import { polygonArea } from '../lib/geometry'
 
 export default function PolygonDebug(): JSX.Element {
-  const parseResult = useAppStore((s) => s.parseResult)
+  const { topLayer, bottomLayer, svgPanelTab } = useAppStore()
+  const parseResult = svgPanelTab === 'top' ? topLayer.parseResult : bottomLayer.parseResult
   if (!parseResult) {
-    return <div className="preview-empty">Нет данных парсинга</div>
+    return (
+      <div className="preview-empty">
+        Нет данных парсинга ({svgPanelTab === 'top' ? 'верх' : 'низ'})
+      </div>
+    )
   }
   return (
     <ul className="polygon-list">

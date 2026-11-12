@@ -71,6 +71,18 @@ export function gcodeLineAtTime(timeline: SimulationTimeline, t: number): number
   return timeline.moves[idx].gcodeLineStart ?? 0
 }
 
+export function gcodeLineRangeAtTime(
+  timeline: SimulationTimeline,
+  t: number
+): { start: number; end: number } {
+  const idx = segmentIndexAtTime(timeline, t)
+  if (idx < 0) return { start: 0, end: 0 }
+  const move = timeline.moves[idx]
+  const start = move.gcodeLineStart ?? 0
+  const end = move.gcodeLineEnd ?? start
+  return { start, end: Math.max(start, end) }
+}
+
 export function moveProgress(timeline: SimulationTimeline, t: number): number {
   if (timeline.totalTime <= 0) return 0
   return (t / timeline.totalTime) * 100
