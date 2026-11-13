@@ -1,6 +1,6 @@
 {
   "name": "koolslicer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "GRBL laser contour G-code generator from SVG",
   "main": "./out/main/index.js",
   "license": "MIT",
@@ -41,6 +41,7 @@
   "build": {
     "appId": "com.koolslicer.app",
     "productName": "KoolSlicer",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -57,6 +58,15 @@
       "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
     },
     "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "files": [
